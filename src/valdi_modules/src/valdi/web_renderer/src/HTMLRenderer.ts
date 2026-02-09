@@ -3,6 +3,7 @@ import { WebValdiLabel } from './views/WebValdiLabel';
 import { WebValdiScroll } from './views/WebValdiScroll';
 import { WebValdiView } from './views/WebValdiView';
 import { WebValdiTextField, registerTextFieldElements } from './views/WebValdiTextField';
+import { WebValdiTextView } from './views/WebValdiTextView';
 import { WebValdiImage } from './views/WebValdiImage';
 import { WebValdiSpinner } from './views/WebValdiSpinner';
 import { UpdateAttributeDelegate } from './ValdiWebRendererDelegate';
@@ -32,6 +33,8 @@ function initViewClass(viewClass: string, id: number, attributeDelegate?: Update
       return new WebValdiScroll(id, attributeDelegate);
     case 'textfield':
       return new WebValdiTextField(id, attributeDelegate);
+    case 'textview':
+      return new WebValdiTextView(id, attributeDelegate);
 
     default:
       throw new Error(`Unknown viewClass: ${viewClass}`);

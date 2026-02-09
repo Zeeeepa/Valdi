@@ -33,6 +33,9 @@ class Runtime {
   // relativePath is not the contents of require, it is preprocessed by the runtime.
   loadJsModule(relativePath: string, requireFunc: any, module: any, exports: any) {
     relativePath = path.normalize(relativePath);
+    
+    // Set module.path for hot reload system (onHotReload uses module.path)
+    module.path = relativePath;
 
     // There are a few different ways that imports can be resolved
     // 1. Relative path
@@ -62,8 +65,16 @@ class Runtime {
       }
     }
 
-    // 3. A catch all looking for the exact path in the available options
+    // 4. A catch all looking for the exact path in the available options
     if (!context.keys().includes(relativePath)) {
+      // Imports inside webpack-bundled code bypass the ModuleLoader and come here directly.
+      // Check if the module was registered via registerModule() (stored in moduleFactory).
+      const moduleLoader = (global as any).moduleLoader;
+      if (moduleLoader?.hasModuleFactory?.(relativePath)) {
+        module.exports = moduleLoader.load(relativePath, true);
+        return;
+      }
+      
       var err = new Error(`Module not found: ${relativePath}`);
       (err as any).code = 'MODULE_NOT_FOUND';
       throw err;
@@ -387,6 +398,20 @@ globalAny.__originalConsole__ = {
 // Relies on runtime being set so it must happen after
 // Assumes relative to the monolithic npm
 const initModule = require("../../valdi_core/src/Init.js");
+
+// Patch moduleLoader.onHotReload to handle undefined paths gracefully.
+// Webpack's module objects don't have .path, so modules that call
+// onHotReload(module, module.path, callback) would fail on web.
+if (globalAny.moduleLoader) {
+  const originalOnHotReload = globalAny.moduleLoader.onHotReload.bind(globalAny.moduleLoader);
+  globalAny.moduleLoader.onHotReload = function(module: any, modulePath: string, callback: () => void) {
+    if (!modulePath) {
+      // On web, skip hot reload registration when path is unavailable
+      return () => {};
+    }
+    return originalOnHotReload(module, modulePath, callback);
+  };
+}
 
 // Restore console
 globalAny.console = globalAny.__originalConsole__;
