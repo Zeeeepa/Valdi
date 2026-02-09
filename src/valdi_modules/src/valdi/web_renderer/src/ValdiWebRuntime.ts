@@ -7,6 +7,16 @@ declare const require: {
 // Declare global for Node-like environment
 declare const global: any;
 
+// Declare global timing functions
+declare global {
+  var __originalTimingFunctions__: {
+    setTimeout: typeof setTimeout;
+    clearTimeout: typeof clearTimeout;
+    setInterval: typeof setInterval;
+    clearInterval: typeof clearInterval;
+  };
+}
+
 const path = require('path-browserify');
 
 // Valdi runtime assumes global instead of globalThis
@@ -28,6 +38,9 @@ class Runtime {
   jsonContext = require.context('../../', true, /\.json$/);
   isDebugEnabled = true;
   buildType = "debug";
+  // Map of task IDs to timeout IDs for scheduleWorkItem
+  private _taskIdCounter = 1;
+  private _scheduledTasks = new Map<number, number>();
 
   // This is essentially the require() function that the runtime is using.
   // relativePath is not the contents of require, it is preprocessed by the runtime.
@@ -328,10 +341,31 @@ class Runtime {
   }
 
   scheduleWorkItem(cb: Function, delayMs: number, interruptible: boolean) {
-    return 0;
+    const taskId = this._taskIdCounter++;
+    const delay = delayMs || 0;
+    const timing = (globalThis as any).__originalTimingFunctions__;
+    // Use the same native setTimeout/clearTimeout pair so cancellation always works
+    // (window.setTimeout may be monkey-patched by Zone.js or others, returning IDs
+    // that native clearTimeout would not recognize)
+    const timeoutId = timing.setTimeout(() => {
+      this._scheduledTasks.delete(taskId);
+      try {
+        cb();
+      } catch (err) {
+        this.onUncaughtError('scheduleWorkItem', err);
+      }
+    }, delay);
+    this._scheduledTasks.set(taskId, timeoutId);
+    return taskId;
   }
 
-  unscheduleWorkItem(taskId: number) {}
+  unscheduleWorkItem(taskId: number) {
+    const timeoutId = this._scheduledTasks.get(taskId);
+    if (timeoutId !== undefined) {
+      (globalThis as any).__originalTimingFunctions__.clearTimeout(timeoutId);
+      this._scheduledTasks.delete(taskId);
+    }
+  }
 
   getCurrentContext() {
     return "";
@@ -380,9 +414,7 @@ class Runtime {
 const globalAny = globalThis as any;
 globalAny.runtime = new Runtime();
 
-// Init is going to try to overwrite console.log, prevent that
-Object.freeze((globalThis as any).__originalConsole__);
-
+// Capture original console before Init overwrites it
 globalAny.__originalConsole__ = {
   log: console.log.bind(console),
   warn: console.warn.bind(console),
@@ -393,6 +425,16 @@ globalAny.__originalConsole__ = {
   trace: console.trace.bind(console),
   assert: console.assert.bind(console),
 };
+Object.freeze(globalAny.__originalConsole__);
+
+// Capture native browser setTimeout/clearTimeout before Valdi replaces them (like we do for console)
+(globalThis as any).__originalTimingFunctions__ = {
+  setTimeout: window.setTimeout,
+  clearTimeout: window.clearTimeout,
+  setInterval: window.setInterval,
+  clearInterval: window.clearInterval,
+};
+Object.freeze((globalThis as any).__originalTimingFunctions__);
 
 // Run the init function
 // Relies on runtime being set so it must happen after
@@ -415,5 +457,9 @@ if (globalAny.moduleLoader) {
 
 // Restore console
 globalAny.console = globalAny.__originalConsole__;
+globalThis.setTimeout = (globalThis as any).__originalTimingFunctions__.setTimeout;
+globalThis.clearTimeout = (globalThis as any).__originalTimingFunctions__.clearTimeout;
+globalThis.setInterval = (globalThis as any).__originalTimingFunctions__.setInterval;
+globalThis.clearInterval = (globalThis as any).__originalTimingFunctions__.clearInterval;
 
 export {};
