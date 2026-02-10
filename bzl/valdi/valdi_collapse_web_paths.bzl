@@ -1,7 +1,13 @@
+load(":valdi_compiled.bzl", "ValdiModuleInfo")
+
 def _dest(rel):
     # Handle package.json - keep it at root
     if rel.endswith("package.json"):
         return "package.json"
+
+    # Generated RegisterNativeModules.js goes at src/ for NPM package consumers
+    if rel.endswith("RegisterNativeModules.js"):
+        return "src/RegisterNativeModules.js"
 
     if "web_native" in rel:
         return "native"
@@ -200,5 +206,107 @@ collapse_native_paths = rule(
     implementation = _impl_native,
     attrs = {
         "srcs": attr.label_list(allow_files = True),
+    },
+)
+
+def _module_id_from_native_dest(dest_path):
+    """Derive the Valdi module ID from native path like 'valdi_tsx/web/JSX.js' or 'cof/web/Cof.js'.
+    Convention: parent/web/File.js -> if parent equals filename (case-insensitive) use filename else parent/src/filename.
+    For paths without /web/ (e.g. my_module/utils/helper.js), insert /src/ only after the first segment: my_module/src/utils/helper.
+    """
+    if "/web/" not in dest_path:
+        no_ext = dest_path[:-3] if dest_path.endswith(".js") else dest_path
+        first_slash = no_ext.find("/")
+        if first_slash == -1:
+            return no_ext
+        return no_ext[:first_slash] + "/src/" + no_ext[first_slash + 1:]
+    idx = dest_path.index("/web/")
+    parent = dest_path[:idx]
+    file_part = dest_path[idx + 5:]  # after "/web/"
+    if file_part.endswith(".js"):
+        file_part = file_part[:-3]
+    if parent.split("/")[-1].lower() == file_part.lower():
+        return file_part
+    return parent + "/src/" + file_part
+
+# Dest path substrings that should not be registered (test files, Node-only or optional modules)
+_REGISTER_NATIVE_EXCLUDE_SUBSTRINGS = [
+    "/test/",
+    ".test.",
+    ".spec.",
+    "_debugging/",  # Optional/debug-only modules (e.g. ..._debugging/web/); not bundled in web package
+]
+
+def _should_register_native_module(dest_path):
+    """Exclude test files and modules that are not suitable for web bundle."""
+    for sub in _REGISTER_NATIVE_EXCLUDE_SUBSTRINGS:
+        if sub in dest_path:
+            return False
+    return True
+
+def _merge_module_id_overrides_from_modules(modules):
+    """Collect web_register_native_module_id_overrides from all transitive Valdi modules."""
+    all_modules = depset(direct = modules, transitive = [m[ValdiModuleInfo].deps for m in modules])
+    merged = {}
+    for m in all_modules.to_list():
+        overrides = getattr(m[ValdiModuleInfo], "web_register_native_module_id_overrides", None)
+        if overrides:
+            merged.update(overrides)
+    return merged
+
+def _generate_register_native_modules_impl(ctx):
+    package_name = ctx.attr.package_name
+    # Overrides: first from each module's ValdiModuleInfo, then BUILD-level overrides on top
+    module_id_overrides = dict(_merge_module_id_overrides_from_modules(ctx.attr.modules))
+    module_id_overrides.update(ctx.attr.module_id_overrides)
+
+    out = ctx.actions.declare_file("RegisterNativeModules.js")
+    lines = [
+        "",
+        "/**",
+        " * AUTO-GENERATED - Do not edit. Native module registrations for web runtime.",
+        " * Generated from _all_web_deps.",
+        " */",
+        "",
+    ]
+    seen_dest = {}
+    n = 0
+    for f in ctx.files.srcs:
+        dest = _dest_native(f.short_path)
+        if not dest.endswith(".js"):
+            continue
+        if not _should_register_native_module(dest):
+            continue
+        if dest in seen_dest:
+            continue
+        seen_dest[dest] = True
+        raw_id = module_id_overrides.get(dest, _module_id_from_native_dest(dest))
+        module_ids = [s.strip() for s in raw_id.split(",") if s.strip()]
+        if not module_ids:
+            module_ids = [raw_id]
+        require_path = package_name + "/native/" + dest[:-3]  # strip .js for require()
+        var_name = "_n" + str(n)
+        n += 1
+        lines.append("var {} = require('{}');".format(var_name, require_path))
+        for mid in module_ids:
+            lines.append("global.moduleLoader.registerModule('{}', () => {});".format(mid, var_name))
+        lines.append("")
+    ctx.actions.write(output = out, content = "\n".join(lines))
+    return [DefaultInfo(files = depset([out]))]
+
+generate_register_native_modules = rule(
+    implementation = _generate_register_native_modules_impl,
+    attrs = {
+        "srcs": attr.label_list(allow_files = True),
+        "package_name": attr.string(mandatory = True, doc = "NPM package name (e.g. @snapchat/valdi_web_snapchat_web_npm)"),
+        "modules": attr.label_list(
+            default = [],
+            providers = [ValdiModuleInfo],
+            doc = "Valdi module targets (e.g. deps of valdi_exported_library). Their web_register_native_module_id_overrides are merged to form the module ID map.",
+        ),
+        "module_id_overrides": attr.string_dict(
+            default = {},
+            doc = "Optional BUILD-level overrides (native dest path -> runtime module ID). Applied after module-declared overrides.",
+        ),
     },
 )

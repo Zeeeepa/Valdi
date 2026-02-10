@@ -82,6 +82,7 @@ def valdi_module(
         android_deps = [],
         native_deps = [],
         web_deps = [],
+        web_register_native_module_id_overrides = None,
         exclude_patterns = None,
         exclude_globs = None,
         **kwargs):
@@ -156,6 +157,7 @@ def valdi_module(
         module_yaml = module_yaml,
         deps = [_valdi_compiled_target_for_target(dep) for dep in deps],
         web_deps = web_deps,
+        web_register_native_module_id_overrides = web_register_native_module_id_overrides or {},
         srcs = srcs,
         res = res,
         protodecl_srcs = protodecl_srcs,

@@ -102,6 +102,7 @@ ValdiModuleInfo = provider(
         "web_release_strings": "Web release strings",
         "web_deps": "Web ts/js dependencies",
         "web_dts_files": "TypeScript declaration files (.d.ts) for web",
+        "web_register_native_module_id_overrides": "Optional dict: native dest path (e.g. 'valdi_core/web/DeviceBridge.js') -> runtime module ID (e.g. 'DeviceBridge'). Declared by the module that owns the web stub.",
     },
 )
 
@@ -226,6 +227,10 @@ valdi_compiled = rule(
         ),
         "web_deps": attr.label_list(
             doc = "List of web dependencies for web",
+        ),
+        "web_register_native_module_id_overrides": attr.string_dict(
+            default = {},
+            doc = "Map of native dest path (e.g. 'valdi_core/web/DeviceBridge.js') to runtime module ID. Declared by the module that owns the web stub.",
         ),
         "disable_annotation_processing": attr.bool(
             doc = "When set to true, will not expect any Valdi annotation processing to occur for this module.",
@@ -1424,6 +1429,7 @@ def _create_valdi_module_info(ctx, module_name, module_yaml, module_definition, 
         web_release_strings = _extract_web_strings("release", outputs),
         web_deps = _extract_npm_package_files(ctx.attr.web_deps),
         web_dts_files = in_declarations + out_declarations,
+        web_register_native_module_id_overrides = ctx.attr.web_register_native_module_id_overrides,
     )
 
 def _extract_npm_package_files(pkgs):

@@ -3,7 +3,7 @@ load("//bzl:expand_template.bzl", "expand_template")
 load("//bzl/android:collect_android_assets.bzl", "collect_android_assets")
 load("//bzl/valdi:rewrite_hdrs.bzl", "rewrite_hdrs")
 load("//bzl/valdi:suffixed_deps.bzl", "get_suffixed_deps")
-load("//bzl/valdi:valdi_collapse_web_paths.bzl", "collapse_native_paths", "collapse_web_paths")
+load("//bzl/valdi:valdi_collapse_web_paths.bzl", "collapse_native_paths", "collapse_web_paths", "generate_register_native_modules")
 load("//bzl/valdi:valdi_protodecl_to_js.bzl", "collapse_protodecl_paths", "protodecl_to_js_dir")
 load("//bzl/valdi/source_set:utils.bzl", "source_set_select")
 load("//valdi:valdi.bzl", "valdi_android_aar")
@@ -128,11 +128,19 @@ def valdi_exported_library(
         srcs = get_suffixed_deps(deps, "_all_web_deps"),
     )
 
+    generate_register_native_modules(
+        name = "{}_register_native_modules".format(web_package_name),
+        srcs = get_suffixed_deps(deps, "_all_web_deps"),
+        package_name = package_name,
+        modules = deps,
+    )
+
     native.filegroup(
         name = "{}_glob".format(web_package_name),
         srcs = get_suffixed_deps(deps, "_web_srcs_filegroup") + [
             ":{}_protodecl_collapsed".format(web_package_name),
             ":{}_web_native".format(web_package_name),
+            ":{}_register_native_modules".format(web_package_name),
             ":generate_package_json",  # package.json to root
         ],
     )
