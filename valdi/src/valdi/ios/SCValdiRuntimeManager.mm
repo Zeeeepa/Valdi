@@ -39,6 +39,7 @@
 #import "valdi/ios/SCValdiDefaultHTTPRequestManager.h"
 #import "valdi/ios/SCValdiKeychainStore.h"
 #import "valdi/ios/SCValdiUserDefaultsStore.h"
+#import "valdi/runtime/JavaScript/JavaScriptANRDetector.hpp"
 #import "valdi/runtime/RuntimeManager.hpp"
 #import "valdi/runtime/Resources/AssetLoaderManager.hpp"
 
@@ -48,6 +49,7 @@
 
 #import "valdi/ios/SCValdiJSWorker.h"
 
+#include <chrono>
 #import <memory>
 #import <utils/debugging/Assert.hpp>
 
@@ -326,6 +328,12 @@ static void updateRuntimeManagersArray(void (^callback)(NSMutableArray<NSValue *
 
     if (configuration.disableGcStackUsageDetection) {
         Valdi::forceRetainJsObjects = true;
+    }
+
+    if (configuration.anrTimeoutMs > 0) {
+        _cppInstance->getANRDetector()->start(std::chrono::milliseconds(configuration.anrTimeoutMs));
+    } else {
+        _cppInstance->getANRDetector()->stop();
     }
 
     [_fontManager setFontLoader:configuration.fontLoader];

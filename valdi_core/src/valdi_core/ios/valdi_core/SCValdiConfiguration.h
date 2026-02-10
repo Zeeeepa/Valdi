@@ -69,4 +69,11 @@ typedef void (^SCValdiPerformHapticFeedbackBlock)(NSString* type);
 // Controls the result of Application.isTestEnvironment() Javascript call
 @property (assign, nonatomic) BOOL isTestEnvironment;
 
+/**
+ * ANR (Application Not Responding) detector timeout in milliseconds for the JS thread.
+ * When greater than 0, the JavaScript ANR detector is started with this threshold.
+ * When 0 (default), the ANR detector is not started.
+ */
+@property (assign, nonatomic) NSInteger anrTimeoutMs;
+
 @end
