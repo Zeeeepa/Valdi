@@ -7,6 +7,7 @@ import { WebValdiTextView } from './views/WebValdiTextView';
 import { WebValdiImage } from './views/WebValdiImage';
 import { WebValdiSpinner } from './views/WebValdiSpinner';
 import { WebValdiVideo } from './views/WebValdiVideo';
+import { WebValdiShape } from './views/WebValdiShape';
 import { UpdateAttributeDelegate } from './ValdiWebRendererDelegate';
 
 export const nodesRef = new Map<number, WebValdiLayout>();
@@ -40,6 +41,9 @@ function initViewClass(viewClass: string, id: number, attributeDelegate?: Update
     case 'video':
     case 'SCValdiVideoView':
       return new WebValdiVideo(id, attributeDelegate);
+    case 'shape':
+    case 'SCValdiShapeView':
+      return new WebValdiShape(id, attributeDelegate);
 
     default:
       throw new Error(`Unknown viewClass: ${viewClass}`);
