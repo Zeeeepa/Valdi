@@ -68,6 +68,92 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
         return .string(data)
     }
 
+    // Merges .m files and deduplicates static trampoline functions
+    // eg. (`SCValdiFunctionInvoke*`, `SCValdiBlockCreate*`) that are emitted per-type
+    // but end up redefined when multiple types share the same combined file.
+    //
+    // This function works by checking content by line and looking for trampoline function 
+    // definitions. The first occurrence of a trampoline function is kept, and subsequent
+    // occurrences are dropped.
+    private func mergeObjcSources(files: [FileAndContent]) -> File {
+        var emittedTrampolineNames = Set<String>()
+        var data = ""
+
+        for file in files {
+            data += "//\n// \(file.filename)\n//\n\n"
+            data += Self.deduplicateTrampolines(in: file.content, emitted: &emittedTrampolineNames)
+            data += "\n"
+        }
+
+        return .string(data)
+    }
+
+    private static func deduplicateTrampolines(in content: String, emitted: inout Set<String>) -> String {
+        let lines = content.components(separatedBy: "\n")
+        var result = [String]()
+        var lineIndex = 0
+
+        while lineIndex < lines.count {
+            let line = lines[lineIndex]
+
+            if let name = trampolineFunctionName(in: line) {
+                // Collect the full function block (including nested braces).
+                var blockLines = [String]()
+                var depth = 0
+                var j = lineIndex
+                while j < lines.count {
+                    let current = lines[j]
+                    blockLines.append(current)
+                    for ch in current {
+                        if ch == Character("{") { depth += 1 }
+                        else if ch == Character("}") { depth -= 1 }
+                    }
+                    j += 1
+                    if depth == 0 && !blockLines.isEmpty { break }
+                }
+
+                if !emitted.contains(name) {
+                    emitted.insert(name)
+                    result.append(contentsOf: blockLines)
+                }
+                // Either way, skip past the block.
+                lineIndex = j
+            } else {
+                result.append(line)
+                lineIndex += 1
+            }
+        }
+
+        return result.joined(separator: "\n")
+    }
+
+    // If the line is the opening of a trampoline function definition, returns
+    // the function name (e.g. `SCValdiFunctionInvokeODDB_v`); otherwise `nil`.
+    private static func trampolineFunctionName(in line: String) -> String? {
+        let prefixes = [
+            "static SCValdiFieldValue ",
+            "static id ",
+        ]
+        let markers = [
+            "SCValdiFunctionInvoke",
+            "SCValdiBlockCreate",
+        ]
+
+        for prefix in prefixes {
+            guard line.hasPrefix(prefix) else { continue }
+            let afterPrefix = line.dropFirst(prefix.count)
+            for marker in markers {
+                guard afterPrefix.hasPrefix(marker) else { continue }
+                // Read the full identifier (letters, digits, underscore) starting at the marker.
+                let identifier = afterPrefix.prefix(while: { $0.isLetter || $0.isNumber || $0 == "_" })
+                if !identifier.isEmpty {
+                    return String(identifier)
+                }
+            }
+        }
+        return nil
+    }
+
     private func mergeCppHeaders(files: [FileAndContent]) -> File {
         let pragmaOnce = "#pragma once"
         var data = "\(pragmaOnce)\n"
@@ -271,6 +357,9 @@ final class CombineNativeSourcesProcessor: CompilationProcessor {
             generatedNativeSource = NativeSource(relativePath: nil, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
         } else if isCppHeader {
             let file = mergeCppHeaders(files: fileAndContentArray)
+            generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
+        } else if filename.hasSuffix(".m") {
+            let file = mergeObjcSources(files: fileAndContentArray)
             generatedNativeSource = NativeSource(relativePath: relativePath, filename: filename, file: file, groupingIdentifier: filename, groupingPriority: 0)
         } else {
             let file = mergeAnySources(files: fileAndContentArray)
