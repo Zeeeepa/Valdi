@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# Build helloworld exported aar and inspect contents to make sure that valdimodules and libs are there
-
+# Build helloworld exported library and verify contents:
+# - Android: AAR with .valdimodule, .map.json, and JNI libs
+# - iOS (macOS only): XCFramework with Info.plist and HelloWorld.framework slices
+#
 # It is not possible to do this from pybuild or run autopilot tests because of workspace limitations
 
 set -e
@@ -12,6 +14,7 @@ OPEN_SOURCE_DIR="$(cd "$SCRIPT_DIR/../../"; pwd)"
 
 # Ensure npm global bin is in PATH (needed for valdi CLI)
 export PATH=~/.npm-global/bin:$PATH
+# Optional: set BAZEL_BIN=bzl to use the repo's bzl wrapper; otherwise valdi uses first of bazel/bzl/bazelisk in PATH
 
 # Determine workspace root by checking for internal-only directories
 # Internal repo has Jenkins/ directory at the root level
@@ -147,6 +150,85 @@ echo "The valdi_exported_library correctly packages:"
 echo "  - ${#EXPECTED_MODULES[@]} .valdimodule files (${EXPECTED_MODULES[*]})"
 echo "  - ${#EXPECTED_MODULES[@]} .map.json sourcemap files"
 echo "  - Native library (libhello_world_export.so)"
+
+# --- iOS export test (macOS only; CI is often Linux so we skip there) ---
+if [ "$(uname -s)" = "Darwin" ]; then
+    echo ""
+    echo "Building HelloWorld exported XCFramework using Valdi CLI..."
+    XCFRAMEWORK_PATH="$OUTPUT_DIR/HelloWorld.xcframework"
+    valdi export ios \
+        --library ${TARGET_PREFIX}apps/helloworld:hello_world_export_ios \
+        --output_path "$XCFRAMEWORK_PATH"
+
+    echo "[OK] iOS export build completed successfully"
+
+    if [ ! -d "$XCFRAMEWORK_PATH" ]; then
+        echo "[ERROR] XCFramework not found at: $XCFRAMEWORK_PATH"
+        popd > /dev/null
+        exit 1
+    fi
+    if [ ! -f "$XCFRAMEWORK_PATH/Info.plist" ]; then
+        echo "[ERROR] XCFramework Info.plist missing"
+        popd > /dev/null
+        exit 1
+    fi
+    # HelloWorld is ios_bundle_name in apps/helloworld/BUILD.bazel.
+    # Verify structure produced by valdi export ios (decompress zip → single xcframework dir)
+    # and by valdi_exported_library (apple_xcframework: binary + public_hdrs).
+    # rules_apple can produce flat layout (HelloWorld.framework/HelloWorld, Headers) or
+    # Versions layout (Versions/A/HelloWorld, Versions/A/Headers; root may have symlinks).
+    FOUND_FRAMEWORK=false
+    for slice in "$XCFRAMEWORK_PATH"/ios-*; do
+        [ -d "$slice" ] || continue
+        FW="$slice/HelloWorld.framework"
+        if [ ! -d "$FW" ]; then
+            continue
+        fi
+        # Binary: root or Versions/A (rules_apple may use either)
+        HAS_BIN=false
+        if [ -f "$FW/HelloWorld" ]; then
+            HAS_BIN=true
+        elif [ -f "$FW/Versions/A/HelloWorld" ]; then
+            HAS_BIN=true
+        fi
+        if [ "$HAS_BIN" != true ]; then
+            echo "[ERROR] Framework slice missing binary (expected $FW/HelloWorld or $FW/Versions/A/HelloWorld)"
+            echo "Contents: $(ls -la "$FW")"
+            popd > /dev/null
+            exit 1
+        fi
+        # Headers: root Headers (or symlink) or Versions/A/Headers
+        HAS_HDRS=false
+        if [ -d "$FW/Headers" ]; then
+            HAS_HDRS=true
+        elif [ -d "$FW/Versions/Current/Headers" ]; then
+            HAS_HDRS=true
+        elif [ -d "$FW/Versions/A/Headers" ]; then
+            HAS_HDRS=true
+        fi
+        if [ "$HAS_HDRS" != true ]; then
+            echo "[ERROR] Framework slice missing Headers (expected $FW/Headers or $FW/Versions/*/Headers)"
+            echo "Contents: $(ls -la "$FW")"
+            popd > /dev/null
+            exit 1
+        fi
+        FOUND_FRAMEWORK=true
+        break
+    done
+    if [ "$FOUND_FRAMEWORK" != true ]; then
+        echo "[ERROR] XCFramework has no ios-* slice with HelloWorld.framework (binary + Headers)"
+        echo "Contents: $(ls -la "$XCFRAMEWORK_PATH")"
+        popd > /dev/null
+        exit 1
+    fi
+    echo "[OK] XCFramework structure valid (Info.plist, slices, HelloWorld.framework with binary and Headers)"
+    echo "================================================================"
+    echo "[PASSED] iOS export (valdi export ios) produced valid XCFramework"
+    echo "================================================================"
+else
+    echo ""
+    echo "Skipping iOS export test (not on macOS)."
+fi
 
 # Cleanup temp directory
 rm -rf "$OUTPUT_DIR"

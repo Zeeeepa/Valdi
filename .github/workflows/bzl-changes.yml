@@ -90,6 +90,25 @@ jobs:
         with:
           lfs: true
       
+      - name: Free disk space
+        run: |
+          # Free disk space first to avoid "No space left on device" during Bazel/Android builds.
+          # Ubuntu runners have limited space; we need room for Java, Android SDK, NDK, and Bazel cache.
+          echo "Disk usage before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          if command -v docker >/dev/null 2>&1; then
+            sudo docker system prune -af 2>/dev/null || true
+          fi
+          echo "Disk usage after cleanup:"
+          df -h
+      
       - name: Mount Bazel cache
         uses: actions/cache@v4
         with:
@@ -159,15 +178,6 @@ jobs:
           
           # Initialize git-lfs
           git lfs install
-      
-      - name: Free disk space
-        run: |
-          # Remove unnecessary files to free up disk space
-          # Note: We keep Android SDK as it will be set up properly by setup-android action
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          df -h
       
       - name: Setup environment and install Valdi CLI
         run: |

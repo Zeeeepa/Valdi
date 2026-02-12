@@ -106,6 +106,8 @@ jobs:
               } catch (err) {
                 if (err.status === 403 || err.status === 404) {
                   console.log(`Could not add label (${err.status}): ${err.message}`);
+                } else if (err.status === 422) {
+                  console.log(`Could not add label (422): label "${sizeLabel}" may not exist in repo. Create labels size/XS, size/S, size/M, size/L, size/XL in repo settings.`);
                 } else {
                   throw err;
                 }
@@ -132,7 +134,7 @@ jobs:
                   body: comment,
                 });
               } catch (err) {
-                if (err.status === 403 || err.status === 404) {
+                if (err.status === 403 || err.status === 404 || err.status === 422) {
                   console.log(`Could not create comment (${err.status}): ${err.message}`);
                 } else {
                   throw err;

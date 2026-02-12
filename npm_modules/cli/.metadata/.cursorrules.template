@@ -45,6 +45,13 @@ valdi install ios          # Build & install iOS app
 valdi hotreload            # Start hot reload
 ```
 
+## Exported library / host apps
+
+When integrating an exported AAR or xcframework into a host app:
+
+- **Android:** Generated view classes use package **`com.snap.modules.<module_name>`** (e.g. `com.snap.modules.test_test.App`), not `com.snap.valdi.modules`. `System.loadLibrary(...)` must use the exact `valdi_exported_library()` target name (e.g. `test_test_export`).
+- **iOS:** Root view class is **`<module_name><RootComponentName>`** where `module_name` is the Valdi **module name** from `valdi_module()` (snake_case, e.g. `test_test` → `test_testApp`), not `ios_bundle_name`. For export use **`--library test_test_export_ios`** (platform-suffixed target). Embed the xcframework into the app's **Frameworks** folder (Embed Frameworks phase → destination **Frameworks**, not PlugIns), or the app crashes at launch with "Library not loaded: @rpath/...framework/...".
+
 ## More Information
 
 - **Comprehensive guide**: `/AGENTS.md` (621 lines)

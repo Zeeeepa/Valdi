@@ -43,6 +43,7 @@ export enum TEMPLATE_BASE_PATHS {
   GIT_IGNORE = '.gitignore.template',
   EDITOR_CONFIG = '.editorconfig.template',
   CURSOR_RULES = '.cursorrules.template',
+  AGENTS = 'AGENTS.md.template',
 }
 
 export const VALID_PLATFORMS: string[] = [PLATFORM.ANDROID, PLATFORM.IOS, PLATFORM.MACOS, PLATFORM.CLI];

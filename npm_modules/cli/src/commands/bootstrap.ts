@@ -232,6 +232,7 @@ function initializeConfigFiles(
     TemplateFile.init(TEMPLATE_BASE_PATHS.WATCHMAN_CONFIG),
     TemplateFile.init(TEMPLATE_BASE_PATHS.EDITOR_CONFIG),
     TemplateFile.init(TEMPLATE_BASE_PATHS.CURSOR_RULES),
+    TemplateFile.init(TEMPLATE_BASE_PATHS.AGENTS).withReplacements({ MODULE_NAME: projectName }),
   ];
 
   TEMPLATE_FILES.forEach(templateFile => {

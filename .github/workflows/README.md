@@ -172,3 +172,40 @@ Note: Manual triggers will attempt to publish all packages, so ensure versions h
 - **Version already exists**: Update the version number in package.json before publishing
 - **Build failures**: Check that the package builds successfully locally before pushing
 
+---
+
+## PR Size Labeler
+
+The `pr-size-labeler.yml` workflow labels pull requests by change size (XS, S, M, L, XL) and optionally posts a size comment.
+
+### Required repo labels
+
+For the workflow to apply labels, create these labels in the repo (Settings → Labels):
+
+- `size/XS` (e.g. &lt;10 lines)
+- `size/S` (e.g. &lt;50)
+- `size/M` (e.g. &lt;250)
+- `size/L` (e.g. &lt;1000)
+- `size/XL` (1000+)
+
+If the labels do not exist, the workflow will log a message and continue (it no longer fails with 422).
+
+---
+
+## Bazel Config & CI Tests
+
+The `bzl-changes.yml` workflow runs on pushes to `main` and on PRs when Bazel/config/CI files change. It has two main jobs:
+
+- **Valdi Smoke Tests** (macOS): checkout, install CLI, run `./tools/ci/bootstrap_app.sh`.
+- **Validate Bazel Build** (Ubuntu): checkout, Android SDK + Bazel setup, install Valdi CLI, then `./tools/ci/test_exported_lib.sh` and `./tools/ci/bazel_build.sh`.
+
+### Troubleshooting Validate Bazel Build failures
+
+- **CLI install step**: The job runs `npm run cli:install` in `npm_modules/cli`, which runs `npm ci && npm link`. `npm ci` requires a committed `package-lock.json` in that directory. If the lock file is missing, the step fails; consider committing a lock file or having the workflow use `npm install` for that job.
+- **Test exported library**: `test_exported_lib.sh` runs `valdi export android ...` for the helloworld app (and on macOS only `valdi export ios ...`, then verifies the XCFramework layout). Failures can be due to Bazel/Android SDK/NDK setup or the export target not building.
+- **Build core targets**: `bazel_build.sh` runs `build_core_targets.sh`, `run_tests.sh`, `install_cli.sh`, and `bootstrap_app.sh`. It also switches to Java 8 on Linux; ensure the runner’s Java/SDK setup matches what the script expects.
+
+Check the failed run’s logs in the Actions tab to see which step failed and the exact error.
+
+**"No space left on device"**: The Ubuntu runner has limited disk. The workflow runs a **Free disk space** step right after checkout (removing .NET, GHC, CodeQL, pre-installed Android, Docker images, apt cache) so there is room for the Android SDK, NDK, and Bazel build. If you still hit out-of-disk errors, consider reducing what gets built or cached, or splitting the job.
+

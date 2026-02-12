@@ -144,6 +144,11 @@ bazel build //modules/{{MODULE_NAME}}:{{MODULE_NAME}}
 bazel test //modules/{{MODULE_NAME}}:tests
 ```
 
+### Exporting and host apps (AAR / xcframework)
+
+- **Android host:** Use `com.snap.modules.<module_name>.<RootComponent>` for the generated view class (e.g. `com.snap.modules.{{MODULE_NAME}}.App`), not `com.snap.valdi.modules`. `System.loadLibrary(...)` = exact `valdi_exported_library()` target name. See `android_app/README.md`.
+- **iOS host:** Root view class = **`<module_name><RootComponentName>`** (Valdi module name from `valdi_module()`, snake_case, e.g. `{{MODULE_NAME}}App`), not `ios_bundle_name`. Export with `--library {{MODULE_NAME}}_export_ios`. Embed the xcframework into the app's **Frameworks** folder (Build Phases → Embed Frameworks → destination **Frameworks**; `dstSubfolderSpec = 10`), not PlugIns, or the app crashes at launch with "Library not loaded: @rpath/...framework/...".
+
 ## Valdi Component Basics
 
 Components use a class-based pattern with lifecycle methods:
@@ -275,4 +280,3 @@ See Valdi documentation at `/docs/docs/workflow-hermes-debugger.md` for detailed
 ---
 
 *This document is intended for AI coding assistants to quickly understand this Valdi application. For comprehensive Valdi framework documentation, refer to the main Valdi repository at https://github.com/Snapchat/Valdi*
-
